@@ -1,16 +1,57 @@
-# React + Vite
+# Meridian Health — Claim Portal
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A full-stack health insurance claim portal for member reimbursement submissions and adjudicator review.
 
-Currently, two official plugins are available:
+## What it is
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+**Member portal** — a guided 6-step flow to submit out-of-network reimbursement claims, attach documents, choose a payment method, and track claims to resolution.
 
-## React Compiler
+**Adjudicator console** — a staff review queue with approve / deny / request-info actions and a full event log per claim.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Stack
 
-## Expanding the ESLint configuration
+- **Front end:** React 19 + Vite, self-contained CSS-in-JS, lucide-react icons
+- **Backend:** Node.js + Express, JSON-file datastore (no external database)
+- **API:** REST/JSON — see `docs/api-contract.md`
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## How to run
+
+### Front end only (mock data, no server needed)
+
+```bash
+npm install
+npm run dev
+```
+
+Open **http://localhost:5173**
+
+### Full stack (real backend + persisted data)
+
+**Terminal 1 — backend:**
+```bash
+npm run server
+```
+Runs on **http://localhost:3001**
+
+**Terminal 2 — front end:**
+```bash
+cp .env.example .env   # sets VITE_API_URL=http://localhost:3001
+npm run dev
+```
+
+Open **http://localhost:5173**
+
+## Configuration
+
+Copy `.env.example` to `.env`:
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `VITE_API_URL` | *(blank — uses mock)* | Backend base URL |
+| `PORT` | `3001` | Server port |
+
+When `VITE_API_URL` is blank the front end runs entirely on in-memory seed data — no server required.
+
+## Scope note
+
+This is a **prototype/demo**. It does not integrate real PHI, real payment rails, or real eligibility systems. The JSON datastore resets to seed data when `server/db.json` is deleted.

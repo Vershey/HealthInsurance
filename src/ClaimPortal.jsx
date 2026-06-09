@@ -1,9 +1,11 @@
-import React, { useState, useMemo, useRef } from "react";
+import React, { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import {
   Check, ChevronLeft, ChevronRight, Upload, FileText, X, ShieldCheck,
   Clock, CheckCircle2, AlertCircle, Plus, Trash2, Banknote, Building2,
   User, Stethoscope, Receipt, ArrowRight, Search, CircleDollarSign,
+  ClipboardList, LogOut, ThumbsUp, ThumbsDown, MessageSquare, RefreshCw,
 } from "lucide-react";
+import { submitClaim, listClaims, decideClaim } from "./apiClient.js";
 
 /* ----------------------------- theme ----------------------------- */
 const CSS = `
@@ -28,9 +30,11 @@ const CSS = `
 .cp .brand{display:flex;align-items:center;gap:10px;font-weight:600;letter-spacing:.01em;}
 .cp .brand .logo{width:30px;height:30px;border-radius:9px;background:var(--mint);display:grid;place-items:center;color:var(--teal-deep);}
 .cp .tabs{display:flex;gap:4px;background:rgba(255,255,255,.08);padding:4px;border-radius:11px;}
-.cp .tab{border:0;background:transparent;color:#Bcd;color:rgba(234,243,240,.75);font:inherit;font-size:14px;font-weight:500;padding:7px 14px;border-radius:8px;cursor:pointer;display:flex;align-items:center;gap:7px;}
+.cp .tab{border:0;background:transparent;color:rgba(234,243,240,.75);font:inherit;font-size:14px;font-weight:500;padding:7px 14px;border-radius:8px;cursor:pointer;display:flex;align-items:center;gap:7px;}
 .cp .tab.on{background:var(--surface);color:var(--teal-deep);}
 .cp .tab:not(.on):hover{color:#fff;}
+.cp .role-btn{border:1px solid rgba(255,255,255,.2);background:transparent;color:rgba(234,243,240,.75);font:inherit;font-size:12px;font-weight:500;padding:5px 11px;border-radius:8px;cursor:pointer;display:flex;align-items:center;gap:6px;}
+.cp .role-btn:hover{background:rgba(255,255,255,.1);color:#fff;}
 
 /* page intro */
 .cp .page{padding:34px 0 64px;}
@@ -138,6 +142,11 @@ const CSS = `
 .cp .btn-ghost{background:transparent;color:var(--ink);border-color:var(--line);}
 .cp .btn-ghost:hover{border-color:var(--muted);}
 .cp .btn-ghost:disabled{opacity:.4;cursor:not-allowed;}
+.cp .btn-danger{background:var(--rust);color:#fff;}
+.cp .btn-danger:hover{opacity:.88;}
+.cp .btn-amber{background:var(--amber);color:#fff;}
+.cp .btn-amber:hover{opacity:.88;}
+.cp .btn-sm{font-size:13px;padding:8px 15px;}
 
 /* secure note */
 .cp .secure{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted);margin-top:16px;justify-content:center;}
@@ -189,12 +198,43 @@ const CSS = `
 .cp .empty{text-align:center;padding:54px 20px;color:var(--muted);}
 .cp .empty .ei{width:54px;height:54px;border-radius:14px;background:var(--surface);border:1px solid var(--line);display:grid;place-items:center;margin:0 auto 14px;color:var(--teal);}
 
+/* loading / error */
+.cp .loading{text-align:center;padding:54px 20px;color:var(--muted);font-size:14px;}
+.cp .apierr{background:var(--rust-soft);border:1px solid var(--rust);border-radius:12px;padding:14px 18px;font-size:13.5px;color:var(--rust);margin-bottom:16px;display:flex;align-items:center;gap:9px;}
+
+/* adjudicator */
+.cp .adj-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:24px;}
+.cp .stat-card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px 20px;}
+.cp .stat-card .sv{font-family:'Fraunces',serif;font-size:28px;font-weight:600;}
+.cp .stat-card .sl{font-size:13px;color:var(--muted);margin-top:2px;}
+.cp .action-panel{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:22px;margin-top:20px;}
+.cp .action-panel h3{font-size:14px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin:0 0 16px;}
+.cp .action-tabs{display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap;}
+.cp .action-tab{border:1px solid var(--line);background:var(--surface);border-radius:9px;padding:9px 16px;font:inherit;font-size:13.5px;font-weight:500;cursor:pointer;color:var(--muted);display:flex;align-items:center;gap:7px;}
+.cp .action-tab:hover{border-color:var(--teal);}
+.cp .action-tab.on.approve{border-color:var(--mint);background:var(--mint-soft);color:var(--teal-deep);}
+.cp .action-tab.on.deny{border-color:var(--rust);background:var(--rust-soft);color:var(--rust);}
+.cp .action-tab.on.info{border-color:var(--amber);background:var(--amber-soft);color:var(--amber);}
+.cp .event-log{margin-top:18px;display:flex;flex-direction:column;gap:10px;}
+.cp .ev{display:flex;gap:12px;align-items:flex-start;}
+.cp .ev-dot{width:9px;height:9px;border-radius:50%;background:var(--mint);flex:0 0 auto;margin-top:5px;}
+.cp .ev-dot.denied{background:var(--rust);}
+.cp .ev-dot.info{background:var(--amber);}
+.cp .ev-at{font-size:12px;color:var(--muted);}
+.cp .ev-lbl{font-size:13.5px;font-weight:500;}
+.cp .detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px 28px;margin-top:12px;}
+.cp .di-item .dk{font-size:12px;color:var(--muted);}
+.cp .di-item .dv{font-size:14px;font-weight:500;}
+.cp .claim-detail{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:22px;margin-bottom:14px;}
+.cp .claim-detail h3{font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:0 0 12px;}
+
 @media(max-width:720px){
-  .cp .grid,.cp .grid-3,.cp .rev-grid{grid-template-columns:1fr;}
+  .cp .grid,.cp .grid-3,.cp .rev-grid,.cp .detail-grid{grid-template-columns:1fr;}
   .cp .svc-grid{grid-template-columns:1fr 1fr;}
   .cp h1.title{font-size:27px;}
   .cp .rail-labels{display:none;}
   .cp .card{padding:20px;}
+  .cp .adj-stats{grid-template-columns:1fr 1fr;}
 }
 `;
 
@@ -208,29 +248,25 @@ const CLAIM_TYPES = [
   { id: "mental", label: "Mental health", icon: User },
 ];
 const STATUS = {
-  submitted: { label: "Submitted", color: "var(--teal)", soft: "var(--teal-soft)" },
-  in_review: { label: "In review", color: "var(--amber)", soft: "var(--amber-soft)" },
-  info_needed: { label: "Action needed", color: "var(--rust)", soft: "var(--rust-soft)" },
-  approved: { label: "Approved", color: "var(--mint)", soft: "var(--mint-soft)" },
-  paid: { label: "Paid", color: "var(--mint)", soft: "var(--mint-soft)" },
-  denied: { label: "Denied", color: "var(--rust)", soft: "var(--rust-soft)" },
+  submitted:   { label: "Submitted",     color: "var(--teal)",  soft: "var(--teal-soft)"  },
+  in_review:   { label: "In review",     color: "var(--amber)", soft: "var(--amber-soft)" },
+  info_needed: { label: "Action needed", color: "var(--rust)",  soft: "var(--rust-soft)"  },
+  approved:    { label: "Approved",      color: "var(--mint)",  soft: "var(--mint-soft)"  },
+  paid:        { label: "Paid",          color: "var(--mint)",  soft: "var(--mint-soft)"  },
+  denied:      { label: "Denied",        color: "var(--rust)",  soft: "var(--rust-soft)"  },
 };
-const money = (n) => "$" + Number(n || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const money = (n) => "$" + Number((n || 0) / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const today = () => new Date().toISOString().slice(0, 10);
-const fmtDate = (d) => d ? new Date(d + "T00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—";
-
-const SEED = [
-  { ref: "CLM-2026-4471", type: "medical", patient: "Self", provider: "Princeton Family Care", dos: "2026-05-12", amount: 845, submitted: "2026-05-15", status: "in_review" },
-  { ref: "CLM-2026-3920", type: "dental", patient: "Maya Reyes (dependent)", provider: "Bright Smiles Dental", dos: "2026-04-02", amount: 320, submitted: "2026-04-04", status: "paid", paid: 256, decided: "2026-04-18", paidOn: "2026-04-24" },
-];
+const fmtDate = (d) => d ? new Date(d.includes("T") ? d : d + "T00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—";
 
 /* ============================== APP =============================== */
 export default function ClaimPortal() {
-  const [view, setView] = useState("submit"); // submit | claims | confirm
+  const [role, setRole] = useState(() => sessionStorage.getItem("mhRole") || "member");
+  const [view, setView] = useState("submit");
   const [step, setStep] = useState(0);
-  const [claims, setClaims] = useState(SEED);
-  const [lastRef, setLastRef] = useState("");
+  const [lastClaim, setLastClaim] = useState(null);
   const [errors, setErrors] = useState({});
+  const [submitting, setSubmitting] = useState(false);
   const fileInput = useRef(null);
 
   const blank = {
@@ -250,7 +286,15 @@ export default function ClaimPortal() {
     [form.services]
   );
 
-  /* ---- validation ---- */
+  function switchRole(r) {
+    sessionStorage.setItem("mhRole", r);
+    setRole(r);
+    setView(r === "adjudicator" ? "queue" : "submit");
+    setStep(0);
+    setErrors({});
+    setForm(blank);
+  }
+
   function validate(s) {
     const e = {};
     if (s === 0) {
@@ -291,32 +335,34 @@ export default function ClaimPortal() {
     setErrors(e);
     if (Object.keys(e).length) return;
     if (step < STEPS.length - 1) setStep(step + 1);
-    else submit();
+    else doSubmit();
   }
   function back() { setErrors({}); if (step > 0) setStep(step - 1); }
 
-  function submit() {
-    const ref = "CLM-2026-" + Math.floor(1000 + Math.random() * 8999);
-    const claim = {
-      ref, type: form.type,
-      patient: form.relationship === "self" ? "Self" : `${form.patientName} (${form.relationship})`,
-      provider: form.provider, dos: form.dos, amount: total, submitted: today(), status: "submitted",
-    };
-    setClaims((c) => [claim, ...c]);
-    setLastRef(ref);
-    setView("confirm");
+  async function doSubmit() {
+    setSubmitting(true);
+    try {
+      const claim = await submitClaim(form);
+      setLastClaim(claim);
+      setView("confirm");
+    } catch (err) {
+      setErrors({ _api: err.message || "Submission failed. Please try again." });
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   function reset() { setForm(blank); setStep(0); setErrors({}); setView("submit"); }
 
-  /* ---- file handling (simulated) ---- */
   function addFiles(list) {
     const items = Array.from(list).map((f, i) => ({
-      id: Date.now() + i, name: f.name,
+      id: Date.now() + i, name: f.name, sizeBytes: f.size,
       size: f.size > 1e6 ? (f.size / 1e6).toFixed(1) + " MB" : Math.max(1, Math.round(f.size / 1024)) + " KB",
     }));
     set("docs", [...form.docs, ...items]);
   }
+
+  const isAdj = role === "adjudicator";
 
   return (
     <div className="cp">
@@ -326,25 +372,45 @@ export default function ClaimPortal() {
         <div className="wrap">
           <div className="brand">
             <span className="logo"><ShieldCheck size={18} /></span>
-            Meridian Health · Member Portal
+            Meridian Health · {isAdj ? "Adjudicator Console" : "Member Portal"}
           </div>
-          <nav className="tabs">
-            <button className={"tab" + (view === "submit" || view === "confirm" ? " on" : "")} onClick={() => setView("submit")}>
-              <Plus size={15} /> Submit a claim
+          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+            {!isAdj && (
+              <nav className="tabs">
+                <button className={"tab" + (view === "submit" || view === "confirm" ? " on" : "")} onClick={() => setView("submit")}>
+                  <Plus size={15} /> Submit a claim
+                </button>
+                <button className={"tab" + (view === "claims" ? " on" : "")} onClick={() => setView("claims")}>
+                  <FileText size={15} /> My claims
+                </button>
+              </nav>
+            )}
+            {isAdj && (
+              <nav className="tabs">
+                <button className={"tab" + (view === "queue" ? " on" : "")} onClick={() => setView("queue")}>
+                  <ClipboardList size={15} /> Review queue
+                </button>
+              </nav>
+            )}
+            <button className="role-btn" onClick={() => switchRole(isAdj ? "member" : "adjudicator")}>
+              <LogOut size={13} /> {isAdj ? "Switch to member" : "Switch to adjudicator"}
             </button>
-            <button className={"tab" + (view === "claims" ? " on" : "")} onClick={() => setView("claims")}>
-              <FileText size={15} /> My claims
-            </button>
-          </nav>
+          </div>
         </div>
       </header>
 
       <main className="wrap page">
-        {view === "confirm" && <Confirmation refNo={lastRef} onTrack={() => setView("claims")} onAgain={reset} />}
+        {isAdj && <AdjudicatorQueue />}
 
-        {view === "claims" && <ClaimsView claims={claims} onNew={() => { reset(); }} />}
+        {!isAdj && view === "confirm" && lastClaim && (
+          <Confirmation claim={lastClaim} onTrack={() => setView("claims")} onAgain={reset} />
+        )}
 
-        {view === "submit" && (
+        {!isAdj && view === "claims" && (
+          <ClaimsView memberId={form.memberId || "MRD-8842013"} onNew={reset} />
+        )}
+
+        {!isAdj && view === "submit" && (
           <>
             <div className="eyebrow">Reimbursement claim</div>
             <h1 className="title display">Submit a health claim</h1>
@@ -353,6 +419,9 @@ export default function ClaimPortal() {
             <Stepper step={step} />
 
             <div className="card">
+              {errors._api && (
+                <div className="apierr"><AlertCircle size={16} /> {errors._api}</div>
+              )}
               {step === 0 && <StepMember form={form} set={set} errors={errors} />}
               {step === 1 && <StepClaim form={form} set={set} errors={errors} />}
               {step === 2 && <StepProvider form={form} set={set} errors={errors} total={total} />}
@@ -361,11 +430,13 @@ export default function ClaimPortal() {
               {step === 5 && <StepReview form={form} total={total} errors={errors} set={set} goTo={setStep} />}
 
               <div className="nav">
-                <button className="btn btn-ghost" onClick={back} disabled={step === 0}>
+                <button className="btn btn-ghost" onClick={back} disabled={step === 0 || submitting}>
                   <ChevronLeft size={17} /> Back
                 </button>
-                <button className="btn btn-primary" onClick={next}>
-                  {step === STEPS.length - 1 ? <>Submit claim <Check size={17} /></> : <>Continue <ChevronRight size={17} /></>}
+                <button className="btn btn-primary" onClick={next} disabled={submitting}>
+                  {submitting ? "Submitting…" : step === STEPS.length - 1
+                    ? <><Check size={17} /> Submit claim</>
+                    : <>Continue <ChevronRight size={17} /></>}
                 </button>
               </div>
             </div>
@@ -545,7 +616,7 @@ function StepProvider({ form, set, errors, total }) {
 
         <div className="totrow">
           <span className="tt">Total amount claimed</span>
-          <span className="tv">{money(total)}</span>
+          <span className="tv">${total.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
         </div>
       </div>
 
@@ -675,7 +746,7 @@ function StepReview({ form, total, errors, set, goTo }) {
       <Sec title="Provider & charges" to={2}>
         <Item k="Provider" v={form.provider} />
         <Item k="Services" v={`${form.services.length} line${form.services.length > 1 ? "s" : ""}`} />
-        <Item k="Total claimed" v={money(total)} />
+        <Item k="Total claimed" v={"$" + total.toLocaleString("en-US", { minimumFractionDigits: 2 })} />
         <Item k="Balance" v={form.paidOOP === "yes" ? "Paid in full" : "Outstanding"} />
       </Sec>
       <Sec title="Documents" to={3}>
@@ -697,7 +768,7 @@ function StepReview({ form, total, errors, set, goTo }) {
 }
 
 /* ------------------------ confirmation ---------------------------- */
-function Confirmation({ refNo, onTrack, onAgain }) {
+function Confirmation({ claim, onTrack, onAgain }) {
   const steps = [
     { t: "Review (1–2 business days)", d: "We check that your claim has everything needed." },
     { t: "Processing (5–10 business days)", d: "We compare charges against your plan benefits." },
@@ -709,7 +780,7 @@ function Confirmation({ refNo, onTrack, onAgain }) {
         <div className="seal"><CheckCircle2 size={38} /></div>
         <h2>Your claim is on its way</h2>
         <p>We've received everything and started reviewing. Keep your reference number — you can track progress anytime under My claims.</p>
-        <div className="refbox"><span className="rl">Reference number</span><span className="rv">{refNo}</span></div>
+        <div className="refbox"><span className="rl">Reference number</span><span className="rv">{claim.reference}</span></div>
         <div className="next-steps">
           {steps.map((s, i) => (
             <div className="ns" key={i}>
@@ -728,13 +799,31 @@ function Confirmation({ refNo, onTrack, onAgain }) {
 }
 
 /* --------------------------- claims view -------------------------- */
-function ClaimsView({ claims, onNew }) {
+function ClaimsView({ memberId, onNew }) {
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState("all");
   const [open, setOpen] = useState(null);
+  const [claims, setClaims] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [apiErr, setApiErr] = useState(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setApiErr(null);
+    try {
+      const res = await listClaims({ role: "member", memberId });
+      setClaims(res.data || []);
+    } catch (err) {
+      setApiErr(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [memberId]);
+
+  useEffect(() => { load(); }, [load]);
 
   const filtered = claims.filter((c) => {
-    const matchQ = (c.ref + c.provider + c.patient).toLowerCase().includes(q.toLowerCase());
+    const matchQ = (c.reference + c.provider.name + c.patient.name).toLowerCase().includes(q.toLowerCase());
     const active = ["submitted", "in_review", "info_needed"].includes(c.status);
     const matchF = filter === "all" || (filter === "active" && active) || (filter === "closed" && !active);
     return matchQ && matchF;
@@ -751,41 +840,49 @@ function ClaimsView({ claims, onNew }) {
           <Search size={16} color="var(--muted)" />
           <input placeholder="Search by reference, provider or patient" value={q} onChange={(e) => setQ(e.target.value)} />
         </div>
-        <div className="filterbtns">
-          {[["all", "All"], ["active", "In progress"], ["closed", "Closed"]].map(([v, l]) => (
-            <button key={v} className={"fbtn" + (filter === v ? " on" : "")} onClick={() => setFilter(v)}>{l}</button>
-          ))}
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <div className="filterbtns">
+            {[["all", "All"], ["active", "In progress"], ["closed", "Closed"]].map(([v, l]) => (
+              <button key={v} className={"fbtn" + (filter === v ? " on" : "")} onClick={() => setFilter(v)}>{l}</button>
+            ))}
+          </div>
+          <button className="btn btn-ghost btn-sm" onClick={load} title="Refresh"><RefreshCw size={14} /></button>
         </div>
       </div>
 
-      {filtered.length === 0 ? (
+      {apiErr && <div className="apierr"><AlertCircle size={16} /> {apiErr}</div>}
+
+      {loading ? (
+        <div className="loading">Loading claims…</div>
+      ) : filtered.length === 0 ? (
         <div className="empty">
           <div className="ei"><FileText size={22} /></div>
           <p>No claims match that view yet.</p>
           <button className="btn btn-primary" style={{ marginTop: 10 }} onClick={onNew}><Plus size={16} /> Submit a claim</button>
         </div>
       ) : filtered.map((c) => {
-        const st = STATUS[c.status];
+        const st = STATUS[c.status] || STATUS.submitted;
         const typeLabel = CLAIM_TYPES.find((t) => t.id === c.type)?.label || c.type;
+        const approvedAmt = c.decision?.approvedAmountCents;
         return (
-          <div className="claim" key={c.ref} onClick={() => setOpen(open === c.ref ? null : c.ref)}>
+          <div className="claim" key={c.id} onClick={() => setOpen(open === c.id ? null : c.id)}>
             <div className="claim-top">
               <div>
-                <div className="claim-id">{c.ref}</div>
-                <div className="claim-meta">{typeLabel} · {c.provider} · {c.patient}</div>
-                <div className="claim-meta">Service {fmtDate(c.dos)} · Submitted {fmtDate(c.submitted)}</div>
+                <div className="claim-id">{c.reference}</div>
+                <div className="claim-meta">{typeLabel} · {c.provider.name} · {c.patient.name}</div>
+                <div className="claim-meta">Service {fmtDate(c.service.dateOfService)} · Submitted {fmtDate(c.submittedAt)}</div>
               </div>
               <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8 }}>
                 <span className="badge" style={{ background: st.soft, color: st.color }}>
                   <span className="bd" style={{ background: st.color }} /> {st.label}
                 </span>
                 <div className="claim-amt">
-                  <div className="a">{money(c.amount)}</div>
-                  <div className="al">{c.status === "paid" ? `Reimbursed ${money(c.paid)}` : "Claimed"}</div>
+                  <div className="a">{money(c.charges.totalBilledCents)}</div>
+                  <div className="al">{c.status === "paid" && approvedAmt ? `Reimbursed ${money(approvedAmt)}` : "Claimed"}</div>
                 </div>
               </div>
             </div>
-            {open === c.ref && <Timeline c={c} />}
+            {open === c.id && <Timeline c={c} />}
           </div>
         );
       })}
@@ -795,13 +892,16 @@ function ClaimsView({ claims, onNew }) {
 
 function Timeline({ c }) {
   const denied = c.status === "denied";
-  // stage index reached: 0 received,1 review,2 decision,3 payment
-  const reached = { submitted: 1, in_review: 1, info_needed: 1, approved: 2, paid: 3, denied: 2 }[c.status];
+  const reached = { submitted: 1, in_review: 1, info_needed: 1, approved: 2, paid: 3, denied: 2 }[c.status] ?? 1;
+  const evDate = (type) => {
+    const ev = c.events?.find((e) => e.type === type);
+    return ev ? fmtDate(ev.at) : "";
+  };
   const stages = [
-    { lbl: "Received", date: fmtDate(c.submitted) },
+    { lbl: "Received", date: fmtDate(c.submittedAt) },
     { lbl: "In review", date: c.status === "submitted" ? "" : "In progress" },
-    { lbl: denied ? "Denied" : "Decision", date: c.decided ? fmtDate(c.decided) : "" },
-    { lbl: "Payment", date: c.paidOn ? fmtDate(c.paidOn) : "" },
+    { lbl: denied ? "Denied" : "Decision", date: c.decision?.decidedAt ? fmtDate(c.decision.decidedAt) : "" },
+    { lbl: "Payment", date: evDate("paid") },
   ];
   return (
     <div className="tl" onClick={(e) => e.stopPropagation()}>
@@ -821,5 +921,337 @@ function Timeline({ c }) {
         );
       })}
     </div>
+  );
+}
+
+/* ====================== ADJUDICATOR CONSOLE ======================= */
+function AdjudicatorQueue() {
+  const [claims, setClaims] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [apiErr, setApiErr] = useState(null);
+  const [selected, setSelected] = useState(null);
+  const [q, setQ] = useState("");
+  const [filter, setFilter] = useState("all");
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setApiErr(null);
+    try {
+      const res = await listClaims({ role: "adjudicator" });
+      setClaims(res.data || []);
+    } catch (err) {
+      setApiErr(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const counts = {
+    submitted:   claims.filter((c) => c.status === "submitted").length,
+    in_review:   claims.filter((c) => c.status === "in_review").length,
+    info_needed: claims.filter((c) => c.status === "info_needed").length,
+  };
+
+  const filtered = claims.filter((c) => {
+    const matchQ = (c.reference + c.provider.name + c.patient.name + c.member.name).toLowerCase().includes(q.toLowerCase());
+    const matchF = filter === "all" || c.status === filter;
+    return matchQ && matchF;
+  });
+
+  const onDecided = (updated) => {
+    setClaims((prev) => prev.map((c) => c.id === updated.id ? updated : c));
+    setSelected(updated);
+  };
+
+  if (selected) {
+    return <ClaimDetail claim={selected} onBack={() => setSelected(null)} onDecided={onDecided} />;
+  }
+
+  return (
+    <>
+      <div className="eyebrow">Adjudicator console</div>
+      <h1 className="title display">Review queue</h1>
+      <p className="lead">Claims awaiting action. Open a claim to approve, deny, or request additional information.</p>
+
+      <div className="adj-stats">
+        {[
+          { label: "Submitted", value: counts.submitted, color: "var(--teal)" },
+          { label: "In review", value: counts.in_review, color: "var(--amber)" },
+          { label: "Action needed", value: counts.info_needed, color: "var(--rust)" },
+        ].map((s) => (
+          <div className="stat-card" key={s.label}>
+            <div className="sv" style={{ color: s.color }}>{s.value}</div>
+            <div className="sl">{s.label}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="toolbar">
+        <div className="searchbox">
+          <Search size={16} color="var(--muted)" />
+          <input placeholder="Search by reference, provider or member" value={q} onChange={(e) => setQ(e.target.value)} />
+        </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <div className="filterbtns">
+            {[["all","All"],["submitted","Submitted"],["in_review","In review"],["info_needed","Action needed"],["approved","Approved"],["denied","Denied"],["paid","Paid"]].map(([v, l]) => (
+              <button key={v} className={"fbtn" + (filter === v ? " on" : "")} onClick={() => setFilter(v)}>{l}</button>
+            ))}
+          </div>
+          <button className="btn btn-ghost btn-sm" onClick={load}><RefreshCw size={14} /></button>
+        </div>
+      </div>
+
+      {apiErr && <div className="apierr"><AlertCircle size={16} /> {apiErr}</div>}
+
+      {loading ? (
+        <div className="loading">Loading queue…</div>
+      ) : filtered.length === 0 ? (
+        <div className="empty">
+          <div className="ei"><ClipboardList size={22} /></div>
+          <p>No claims match that filter.</p>
+        </div>
+      ) : filtered.map((c) => {
+        const st = STATUS[c.status] || STATUS.submitted;
+        const typeLabel = CLAIM_TYPES.find((t) => t.id === c.type)?.label || c.type;
+        return (
+          <div className="claim" key={c.id} onClick={() => setSelected(c)}>
+            <div className="claim-top">
+              <div>
+                <div className="claim-id">{c.reference}</div>
+                <div className="claim-meta">{typeLabel} · {c.provider.name}</div>
+                <div className="claim-meta">Member: {c.member.name} · Patient: {c.patient.name}</div>
+                <div className="claim-meta">Service {fmtDate(c.service.dateOfService)} · Submitted {fmtDate(c.submittedAt)}</div>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8 }}>
+                <span className="badge" style={{ background: st.soft, color: st.color }}>
+                  <span className="bd" style={{ background: st.color }} /> {st.label}
+                </span>
+                <div className="claim-amt">
+                  <div className="a">{money(c.charges.totalBilledCents)}</div>
+                  <div className="al">Claimed</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
+function ClaimDetail({ claim: initialClaim, onBack, onDecided }) {
+  const [claim, setClaim] = useState(initialClaim);
+  const [action, setAction] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [apiErr, setApiErr] = useState(null);
+  const [f, setF] = useState({ approvedAmount: "", denialReason: "out_of_network", note: "", adjudicator: "a.morgan" });
+  const sf = (k, v) => setF((x) => ({ ...x, [k]: v }));
+
+  const typeLabel = CLAIM_TYPES.find((t) => t.id === claim.type)?.label || claim.type;
+  const st = STATUS[claim.status] || STATUS.submitted;
+  const canAct = !["approved", "denied", "paid"].includes(claim.status);
+
+  async function doDecide() {
+    setApiErr(null);
+    if (!f.adjudicator.trim()) { setApiErr("Enter adjudicator ID."); return; }
+    if (action === "approve" && !(parseFloat(f.approvedAmount) > 0)) { setApiErr("Enter approved amount."); return; }
+    if (action === "request_info" && !f.note.trim()) { setApiErr("Enter a note for the member."); return; }
+
+    setSubmitting(true);
+    try {
+      const payload = {
+        action,
+        adjudicator: f.adjudicator,
+        ...(action === "approve" && { approvedAmountCents: Math.round(parseFloat(f.approvedAmount) * 100) }),
+        ...(action === "deny" && { denialReason: f.denialReason }),
+        ...(f.note.trim() && { note: f.note }),
+        ...(action === "request_info" && { note: f.note }),
+      };
+      const updated = await decideClaim(claim.id, payload);
+      setClaim(updated);
+      onDecided(updated);
+      setAction(null);
+    } catch (err) {
+      setApiErr(err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <>
+      <div style={{ marginBottom: 18 }}>
+        <button className="btn btn-ghost btn-sm" onClick={onBack}><ChevronLeft size={15} /> Back to queue</button>
+      </div>
+
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12, marginBottom: 20 }}>
+        <div>
+          <div className="eyebrow">Claim detail</div>
+          <h1 className="title display" style={{ fontSize: 26, margin: "6px 0 4px" }}>{claim.reference}</h1>
+          <div style={{ fontSize: 14, color: "var(--muted)" }}>{typeLabel} · {claim.provider.name}</div>
+        </div>
+        <span className="badge" style={{ background: st.soft, color: st.color, fontSize: 14, padding: "8px 16px" }}>
+          <span className="bd" style={{ background: st.color }} /> {st.label}
+        </span>
+      </div>
+
+      <div className="claim-detail">
+        <h3>Member & service</h3>
+        <div className="detail-grid">
+          {[
+            ["Member ID", claim.member.memberId],
+            ["Member", claim.member.name],
+            ["Patient", `${claim.patient.name} (${claim.patient.relationship})`],
+            ["Date of birth", fmtDate(claim.member.dob)],
+            ["Date of service", fmtDate(claim.service.dateOfService)],
+            ["Place", claim.service.placeOfService],
+            ["Emergency", claim.service.emergency ? "Yes" : "No"],
+            ["Reason", claim.service.reason],
+          ].map(([k, v]) => (
+            <div className="di-item" key={k}><div className="dk">{k}</div><div className="dv">{v || "—"}</div></div>
+          ))}
+        </div>
+      </div>
+
+      <div className="claim-detail">
+        <h3>Provider & charges</h3>
+        <div className="detail-grid">
+          <div className="di-item"><div className="dk">Provider</div><div className="dv">{claim.provider.name}</div></div>
+          {claim.provider.npi && <div className="di-item"><div className="dk">NPI</div><div className="dv">{claim.provider.npi}</div></div>}
+          {claim.provider.address && <div className="di-item" style={{ gridColumn: "1/-1" }}><div className="dk">Address</div><div className="dv">{claim.provider.address}</div></div>}
+        </div>
+        <div style={{ marginTop: 14 }}>
+          {claim.charges.lines.map((l, i) => (
+            <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid var(--line-soft)", fontSize: 14 }}>
+              <span>{l.code && <span style={{ color: "var(--muted)", marginRight: 8 }}>{l.code}</span>}{l.description}</span>
+              <span style={{ fontWeight: 600 }}>{money(l.amountCents)}</span>
+            </div>
+          ))}
+          <div style={{ display: "flex", justifyContent: "space-between", padding: "12px 0 0", fontWeight: 700, fontSize: 15 }}>
+            <span>Total billed</span>
+            <span>{money(claim.charges.totalBilledCents)}</span>
+          </div>
+        </div>
+      </div>
+
+      {claim.documents.length > 0 && (
+        <div className="claim-detail">
+          <h3>Documents ({claim.documents.length})</h3>
+          <div className="files">
+            {claim.documents.map((d) => (
+              <div className="filerow" key={d.id}>
+                <span className="fi"><FileText size={16} /></span>
+                <span className="fn">{d.name}</span>
+                <span className="fs">{d.type}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {claim.decision?.decidedAt && (
+        <div className="claim-detail">
+          <h3>Decision</h3>
+          <div className="detail-grid">
+            {claim.decision.approvedAmountCents != null && (
+              <div className="di-item"><div className="dk">Approved amount</div><div className="dv">{money(claim.decision.approvedAmountCents)}</div></div>
+            )}
+            {claim.decision.denialReason && (
+              <div className="di-item"><div className="dk">Denial reason</div><div className="dv">{claim.decision.denialReason.replace(/_/g, " ")}</div></div>
+            )}
+            {claim.decision.note && (
+              <div className="di-item" style={{ gridColumn: "1/-1" }}><div className="dk">Note</div><div className="dv">{claim.decision.note}</div></div>
+            )}
+            <div className="di-item"><div className="dk">Adjudicator</div><div className="dv">{claim.decision.adjudicator}</div></div>
+            <div className="di-item"><div className="dk">Decided</div><div className="dv">{fmtDate(claim.decision.decidedAt)}</div></div>
+          </div>
+        </div>
+      )}
+
+      <div className="claim-detail">
+        <h3>Event log</h3>
+        <div className="event-log">
+          {[...claim.events].reverse().map((ev, i) => {
+            const dotCls = ev.type === "denied" ? " denied" : ev.type === "info_requested" ? " info" : "";
+            return (
+              <div className="ev" key={i}>
+                <span className={"ev-dot" + dotCls} />
+                <div>
+                  <div className="ev-lbl">{ev.label}</div>
+                  <div className="ev-at">{fmtDate(ev.at)} · by {ev.by}</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {canAct && (
+        <div className="action-panel">
+          <h3>Take action</h3>
+          <div className="action-tabs">
+            {[
+              { id: "approve",      label: "Approve",      Icon: ThumbsUp },
+              { id: "deny",         label: "Deny",         Icon: ThumbsDown },
+              { id: "request_info", label: "Request info", Icon: MessageSquare },
+            ].map(({ id, label, Icon }) => (
+              <button key={id}
+                className={`action-tab${action === id ? ` on ${id === "approve" ? "approve" : id === "deny" ? "deny" : "info"}` : ""}`}
+                onClick={() => { setAction(action === id ? null : id); setApiErr(null); }}>
+                <Icon size={15} /> {label}
+              </button>
+            ))}
+          </div>
+
+          {action && (
+            <div>
+              {apiErr && <div className="apierr" style={{ marginBottom: 14 }}><AlertCircle size={15} /> {apiErr}</div>}
+              <div className="grid">
+                <Field label="Adjudicator ID">
+                  <input value={f.adjudicator} onChange={(e) => sf("adjudicator", e.target.value)} placeholder="e.g. a.morgan" />
+                </Field>
+                {action === "approve" && (
+                  <Field label="Approved amount ($)">
+                    <input inputMode="decimal" value={f.approvedAmount}
+                      onChange={(e) => sf("approvedAmount", e.target.value.replace(/[^0-9.]/g, ""))} placeholder="e.g. 280.00" />
+                  </Field>
+                )}
+                {action === "deny" && (
+                  <Field label="Denial reason">
+                    <select value={f.denialReason} onChange={(e) => sf("denialReason", e.target.value)}>
+                      {["out_of_network","not_covered","duplicate","missing_docs","not_medically_necessary","other"].map((r) => (
+                        <option key={r} value={r}>{r.replace(/_/g, " ")}</option>
+                      ))}
+                    </select>
+                  </Field>
+                )}
+                <div className="field full">
+                  <label>Note {action !== "request_info" && <span className="opt">(optional)</span>}</label>
+                  <textarea value={f.note} onChange={(e) => sf("note", e.target.value)}
+                    placeholder={
+                      action === "approve" ? "e.g. Allowed amount per fee schedule."
+                      : action === "deny" ? "Additional context for member."
+                      : "Describe what additional information is needed."
+                    } />
+                </div>
+              </div>
+              <div style={{ marginTop: 16, display: "flex", gap: 10 }}>
+                <button
+                  className={`btn btn-sm ${action === "approve" ? "btn-primary" : action === "deny" ? "btn-danger" : "btn-amber"}`}
+                  onClick={doDecide} disabled={submitting}>
+                  {submitting ? "Saving…"
+                    : action === "approve" ? "Confirm approval"
+                    : action === "deny" ? "Confirm denial"
+                    : "Send request"}
+                </button>
+                <button className="btn btn-ghost btn-sm" onClick={() => { setAction(null); setApiErr(null); }}>Cancel</button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </>
   );
 }
