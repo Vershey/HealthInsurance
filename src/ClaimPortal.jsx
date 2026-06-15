@@ -5,7 +5,8 @@ import {
   User, Stethoscope, Receipt, ArrowRight, Search, CircleDollarSign,
   ClipboardList, LogOut, ThumbsUp, ThumbsDown, MessageSquare, RefreshCw,
 } from "lucide-react";
-import { submitClaim, listClaims, decideClaim } from "./apiClient.js";
+import { submitClaim, listClaims, decideClaim, extractCharges } from "./apiClient.js";
+import ReviewExtractedCharges from "./ReviewExtractedCharges.jsx";
 
 /* ----------------------------- theme ----------------------------- */
 const CSS = `
@@ -572,9 +573,25 @@ function StepProvider({ form, set, errors, total }) {
   const upd = (id, k, v) => set("services", form.services.map((s) => s.id === id ? { ...s, [k]: v } : s));
   const add = () => set("services", [...form.services, { id: Date.now(), code: "", desc: "", amount: "" }]);
   const remove = (id) => set("services", form.services.filter((s) => s.id !== id));
+
+  function applyExtracted({ provider, dateOfService, lines }) {
+    if (provider) set("provider", provider);
+    if (dateOfService) set("dos", dateOfService);
+    if (lines?.length) {
+      set("services", lines.map((l, i) => ({
+        id: Date.now() + i,
+        code: l.code || "",
+        desc: l.description || "",
+        amount: l.amountCents != null ? (l.amountCents / 100).toFixed(2) : "",
+      })));
+    }
+  }
+
   return (
     <>
       <div className="card-head"><h2>Provider & charges</h2><p>Copy the charges from your itemized bill, one line per service.</p></div>
+
+      <ReviewExtractedCharges extract={extractCharges} onApply={applyExtracted} />
       <div className="grid">
         <Field label="Provider or facility name" error={errors.provider}>
           <input className={cls(errors.provider)} value={form.provider} onChange={(e) => set("provider", e.target.value)} placeholder="e.g. Dr. Lena Okafor / City Health Clinic" />

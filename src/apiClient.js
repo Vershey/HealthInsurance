@@ -276,6 +276,36 @@ export function decideClaim(id, decision) {
   return apiFetch("POST", `/v1/claims/${id}/decisions`, decision);
 }
 
+export async function extractCharges(file) {
+  if (!BASE) return mockExtractCharges(file);
+  const body = new FormData();
+  body.append("bill", file);
+  const res = await fetch(`${BASE}/v1/extract-charges`, {
+    method: "POST",
+    headers: authHeader(),
+    body,
+  });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json?.error?.message || "Extraction failed");
+  return json;
+}
+
+function mockExtractCharges(_file) {
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      resolve({
+        provider: "Princeton Family Care",
+        dateOfService: new Date().toISOString().slice(0, 10),
+        lines: [
+          { code: "99213", description: "Office visit, established patient", amountCents: 15000 },
+          { code: "85025", description: "Complete blood count (CBC)", amountCents: 4500 },
+          { code: "81003", description: "Urinalysis, automated", amountCents: 2800 },
+        ],
+      });
+    }, 1800);
+  });
+}
+
 // ─── payload builder ─────────────────────────────────────────────────────────
 
 function buildPayload(f) {
