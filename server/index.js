@@ -1,15 +1,11 @@
 import express from "express";
 import cors from "cors";
 import multer from "multer";
-import Anthropic from "@anthropic-ai/sdk";
 import { randomUUID } from "crypto";
 import { readFileSync, writeFileSync, existsSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
-
-const anthropic = process.env.ANTHROPIC_API_KEY
-  ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-  : null;
+import { extractCharges } from "./extractCharges.js";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
@@ -299,60 +295,12 @@ app.post("/v1/claims/:id/decisions", (req, res) => {
 // POST /v1/extract-charges  (multipart: field "bill")
 app.post("/v1/extract-charges", upload.single("bill"), async (req, res) => {
   if (!req.file) return res.status(422).json(validErr("validation_failed", "No file uploaded."));
-
-  if (!anthropic) {
-    // No API key — return mock data so the UI still works
-    return res.json({
-      provider: "Sample Medical Center",
-      dateOfService: new Date().toISOString().slice(0, 10),
-      lines: [
-        { code: "99213", description: "Office visit, established patient", amountCents: 15000 },
-        { code: "85025", description: "Complete blood count (CBC)", amountCents: 4500 },
-      ],
-    });
-  }
-
-  const mime = req.file.mimetype;
-  const mediaType = ["image/png", "image/jpeg", "image/webp", "image/gif"].includes(mime)
-    ? mime
-    : "application/pdf";
-
   try {
-    const msg = await anthropic.messages.create({
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: 1024,
-      messages: [{
-        role: "user",
-        content: [
-          {
-            type: mediaType === "application/pdf" ? "document" : "image",
-            source: {
-              type: "base64",
-              media_type: mediaType,
-              data: req.file.buffer.toString("base64"),
-            },
-          },
-          {
-            type: "text",
-            text: `Extract the billing information from this itemized medical bill. Return ONLY valid JSON in this exact shape:
-{
-  "provider": "<provider or facility name>",
-  "dateOfService": "<YYYY-MM-DD or empty string>",
-  "lines": [
-    { "code": "<CPT/procedure code or empty>", "description": "<service description>", "amountCents": <integer cents> }
-  ]
-}
-Include only actual line-item charges. Do not include totals, taxes, or payment rows as separate lines.`,
-          },
-        ],
-      }],
+    const result = await extractCharges({
+      base64: req.file.buffer.toString("base64"),
+      mediaType: req.file.mimetype,
     });
-
-    const text = msg.content.find((b) => b.type === "text")?.text || "";
-    const match = text.match(/\{[\s\S]*\}/);
-    if (!match) throw new Error("No JSON in response");
-    const parsed = JSON.parse(match[0]);
-    res.json(parsed);
+    res.json(result);
   } catch (err) {
     console.error("Extract error:", err.message);
     res.status(500).json(validErr("server_error", "Could not extract charges from this file."));
